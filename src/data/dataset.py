@@ -13,6 +13,7 @@ class ycb_dataset (torch.utils.data.Dataset) :
         self._flatten_data_paths(self.root) 
         print('completed file paths flatning ')
 
+        
     def _flatten_data_paths(self , root ) : 
 
         for vidio in sorted(os.listdir(root)): 
@@ -92,7 +93,7 @@ class ycb_dataset (torch.utils.data.Dataset) :
         
 
     def __len__(self) : 
-        NotImplemented
+        return len(self.all_samples)
     
     def __getitem__(self, idx) :
         NotImplemented
