@@ -1,9 +1,12 @@
 import torch 
 import os 
 import json 
+import torchvision
+import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 class ycb_dataset (torch.utils.data.Dataset) : 
-    def __init__(self , config : dict , root : str , is_training : bool = True ) : 
+    def __init__(self , config : dict , root : str , is_training : bool = True , model_stage : int = 1  ) : 
         self.config = config 
         self.root = root
         self.is_training = is_training 
@@ -13,6 +16,7 @@ class ycb_dataset (torch.utils.data.Dataset) :
         self._flatten_data_paths(self.root) 
         print('completed file paths flatning ')
 
+        self.model_stage = model_stage
         
     def _flatten_data_paths(self , root ) : 
 
@@ -95,5 +99,26 @@ class ycb_dataset (torch.utils.data.Dataset) :
     def __len__(self) : 
         return len(self.all_samples)
     
-    def __getitem__(self, idx) :
-        NotImplemented
+    def _read_and_normalize_rgb_image(self, image_path : str) -> torch.Tensor : 
+        img  = torchvision.io.read_image(image_path) 
+        return img / 255.0 
+    
+    def _read_and_standardized_depth_img(self , depth_map_path : str , depth_scale : float ) -> torch.Tensor : 
+        depth_map = torchvision.io.read_image(depth_map_path) 
+        depth_map = depth_map * depth_scale 
+        return depth_map
+
+    # def process_pose(self, rot_list , trans_list) : 
+    #     t = np.array
+
+    def _read_masks_and_other_meta_data(self , labels : list[dict]) : 
+        mask_lists = [] 
+        cam_r_m2c_list = [] 
+        cam_t_m2c_list = [] 
+        object_id_list = [] 
+
+        for item in labels : 
+            NotImplemented
+
+    def __getitem__(self, idx : int) :
+        sample = self.all_samples[idx] 
