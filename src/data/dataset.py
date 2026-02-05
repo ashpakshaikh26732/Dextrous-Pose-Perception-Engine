@@ -33,6 +33,10 @@ class ycb_dataset (torch.utils.data.Dataset) :
             with open(scene_gt_json_path , 'r') as jsb : 
                 scene_gt_json_data = json.load(jsb) 
 
+            scene_gt_info_path = os.path.join(vidio_address , 'scene_gt_info.json')
+            with open(scene_gt_info_path, 'r') as f:
+                    scene_gt_info_data = json.load(f)           
+
             depth_map_dir_path = os.path.join(vidio_address , 'depth')
             rgb_image_dir_path = os.path.join(vidio_address , 'rgb')
 
@@ -77,6 +81,7 @@ class ycb_dataset (torch.utils.data.Dataset) :
 
                 scene_gt = scene_gt_json_data[str(index)]
 
+                gt_info_list = scene_gt_info_data[str(index)]
                 
 
                 for obj_idx , mask_data in enumerate(  scene_gt) : 
@@ -90,7 +95,13 @@ class ycb_dataset (torch.utils.data.Dataset) :
                     mask_meta['cam_R_m2c'] = mask_data['cam_R_m2c'] 
                     mask_meta['cam_t_m2c'] = mask_data['cam_t_m2c'] 
 
+                    info_data = gt_info_list[obj_idx]
+
+
                     obj['laebels'].append(mask_meta)
+                    raw_bbox = info_data['bbox_visib']
+                    mask_meta['bbox_visib'] = raw_bbox
+
                 self.all_samples.append(obj)
 
             print(f'completed {vidio}')
@@ -106,8 +117,8 @@ class ycb_dataset (torch.utils.data.Dataset) :
     
     def _read_and_standardized_depth_img(self , depth_map_path : str , depth_scale : float ) -> torch.Tensor : 
         full_depth_map_path = os.path.join(self.root , depth_map_path)
-        depth_map = torchvision.io.read_image(full_depth_map_path) 
-        depth_map = depth_map * depth_scale 
+        depth_map = torchvision.io.read_image(full_depth_map_path).float() 
+        depth_map = depth_map * depth_scale / 1000.0
         return depth_map
 
     def process_pose(self, rot_list , trans_list) : 
@@ -129,11 +140,18 @@ class ycb_dataset (torch.utils.data.Dataset) :
         cam_r_m2c_list = [] 
         cam_t_m2c_list = [] 
         object_id_list = [] 
+        bbox_list = [] 
 
         for item in labels : 
+
+            x,y,w,h = item['bbox_visib']
+            if w <= 0 or h <= 0:
+                continue            
+
             img_path = item['mask_address']
             full_img_path = os.path.join(self.root , img_path)
             mask = torchvision.io.read_image(full_img_path) 
+            mask = mask.squeeze(0)
             mask_lists.append(mask) 
             t_vec , r_mat = self.process_pose(item['cam_R_m2c'] , item['cam_t_m2c'])
             cam_r_m2c_list.append(r_mat)
@@ -141,10 +159,25 @@ class ycb_dataset (torch.utils.data.Dataset) :
             obj_id = item['object_id'] 
             object_id_list.append(obj_id) 
 
-        return mask_lists , cam_r_m2c_list , cam_t_m2c_list , object_id_list 
+
+
+            x1 = x
+            y1 = y
+            x2 = x + w
+            y2 = y + h
+
+            bbox = torch.tensor([x1, y1, x2, y2], dtype=torch.float32)
+            bbox_list.append(bbox)
+
+        return torch.stack(mask_lists , dim = 0) , cam_r_m2c_list , cam_t_m2c_list , object_id_list  , bbox_list 
+
+
 
     def __getitem__(self, idx : int) :
         sample = self.all_samples[idx] 
         rgb_image = self._read_and_normalize_rgb_image(sample['rgb_image_adderss']) 
         depth_map_image = self._read_and_standardized_depth_img(sample['depth_map_image_address'] , sample['depth_scale'])
-        mask_lists , cam_r_m2c_list , cam_t_m2c_list , object_id_list  = self._read_masks_and_other_meta_data(sample['laebels'])
+        mask_lists , cam_r_m2c_list , cam_t_m2c_list , object_id_list , bbox_list  = self._read_masks_and_other_meta_data(sample['laebels'])
+
+
+
