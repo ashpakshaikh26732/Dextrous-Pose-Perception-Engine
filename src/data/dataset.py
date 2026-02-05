@@ -100,16 +100,29 @@ class ycb_dataset (torch.utils.data.Dataset) :
         return len(self.all_samples)
     
     def _read_and_normalize_rgb_image(self, image_path : str) -> torch.Tensor : 
-        img  = torchvision.io.read_image(image_path) 
+        full_image_path =  os.path.join(self.root, image_path)
+        img  = torchvision.io.read_image(full_image_path) 
         return img / 255.0 
     
     def _read_and_standardized_depth_img(self , depth_map_path : str , depth_scale : float ) -> torch.Tensor : 
-        depth_map = torchvision.io.read_image(depth_map_path) 
+        full_depth_map_path = os.path.join(self.root , depth_map_path)
+        depth_map = torchvision.io.read_image(full_depth_map_path) 
         depth_map = depth_map * depth_scale 
         return depth_map
 
-    # def process_pose(self, rot_list , trans_list) : 
-    #     t = np.array
+    def process_pose(self, rot_list , trans_list) : 
+        t = np.array(trans_list , dtype=np.float32) 
+        t = t /1000.0 
+
+        r_matrix = np.array(rot_list , dtype=np.float32).reshape(3,3) 
+
+        r_quat = R.from_matrix(r_matrix).as_quat() 
+        
+        t_tensor  = torch.from_numpy(t).float() 
+        r_tensor = torch.from_numpy(r_quat)
+
+        return t_tensor , r_tensor 
+    
 
     def _read_masks_and_other_meta_data(self , labels : list[dict]) : 
         mask_lists = [] 
@@ -118,7 +131,20 @@ class ycb_dataset (torch.utils.data.Dataset) :
         object_id_list = [] 
 
         for item in labels : 
-            NotImplemented
+            img_path = item['mask_address']
+            full_img_path = os.path.join(self.root , img_path)
+            mask = torchvision.io.read_image(full_img_path) 
+            mask_lists.append(mask) 
+            t_vec , r_mat = self.process_pose(item['cam_R_m2c'] , item['cam_t_m2c'])
+            cam_r_m2c_list.append(r_mat)
+            cam_t_m2c_list.append(t_vec) 
+            obj_id = item['object_id'] 
+            object_id_list.append(obj_id) 
+
+        return mask_lists , cam_r_m2c_list , cam_t_m2c_list , object_id_list 
 
     def __getitem__(self, idx : int) :
         sample = self.all_samples[idx] 
+        rgb_image = self._read_and_normalize_rgb_image(sample['rgb_image_adderss']) 
+        depth_map_image = self._read_and_standardized_depth_img(sample['depth_map_image_address'] , sample['depth_scale'])
+        mask_lists , cam_r_m2c_list , cam_t_m2c_list , object_id_list  = self._read_masks_and_other_meta_data(sample['laebels'])
